@@ -1,3 +1,4 @@
 transfer/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
 transfer/**/*.parquet filter=lfs diff=lfs merge=lfs -text
 transfer/**/*.safetensors filter=lfs diff=lfs merge=lfs -text
+models/**/*.safetensors filter=lfs diff=lfs merge=lfs -text

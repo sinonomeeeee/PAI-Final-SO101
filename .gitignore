@@ -26,3 +26,6 @@ wandb/
 
 # macOS
 .DS_Store
+
+# Final trained models included in this repository
+!models/**/*.safetensors

@@ -1,149 +1,166 @@
-# SO-101を用いたACT模倣学習によるPick-and-Place
+# SO-101実機タスクにおける3種類の模倣学習方策の比較検討
 
 Physical AI応用1講座 最終課題
 
 ## 概要
 
-本プロジェクトでは、SO-101ロボットアームを用いて、  
-模倣学習による実機Pick-and-Placeタスクを実装した。
+本プロジェクトでは、SO-101ロボットアームを用いた物体移動タスクに対して、
+以下の3種類の模倣学習方策を実装し、実機上で比較評価した。
 
-Leader-Follower方式による遠隔操作で実機デモンストレーションを収集し、  
-LeRobotのACT（Action Chunking with Transformers）を用いて方策を学習した。
+- ACT (Action Chunking Transformer)
+- Diffusion Policy
+- SmolVLA
 
-学習後はLeaderによる操作を行わず、  
-アーム搭載カメラの画像とロボットの関節状態を入力として、  
-SO-101 Followerが自律的にPick-and-Placeを実行する。
+すべてのモデルについて、共通の40エピソードのデモンストレーションデータを使用した。
 
-## タスク内容
+実機評価では、基準位置、左方向位置変更、右方向位置変更の3条件について、
+各モデル30試行、合計90試行を実施し、成功率および失敗傾向を比較した。
 
-本課題では、SO-101ロボットアームによる実機Pick-and-Placeを対象とした。
+## タスク
 
-机上に配置した物体を把持し、指定したターゲット領域まで移動して
-配置する一連の操作をLeader-Follower方式でデモンストレーションとして収集し、
-ACTによる模倣学習を行った。
+SO-101を用いて、机上に配置した消しゴムを指定された目標領域まで移動させる。
 
-推論時には、アーム搭載カメラ画像とロボットの関節状態を入力として、
-学習済みACT policyからロボットの動作を生成した。
+1試行の制限時間は40秒とし、
+40秒以内に物体の50%以上が目標領域内に入った場合を成功と判定した。
 
-## システム構成
+物体の移動方法は把持・搬送に限定せず、
+押し動作によって目標領域まで移動した場合も成功としている。
 
-### ハードウェア
+## デモンストレーションデータ
 
-- SO-101 Leader
-- SO-101 Follower
-- アーム搭載USBカメラ
-- Ubuntu PC
-- NVIDIA GPU
-
-### ソフトウェア
-
-- LeRobot
-- ACT（Action Chunking with Transformers）
-- PyTorch
-- OpenCV
-- CUDA
-- Git / GitHub
-
-## デモンストレーションデータの収集
-
-SO-101 Leaderを人間が操作し、その動作をSO-101 Followerに追従させる  
-Leader-Follower方式で実機デモンストレーションを収集した。
-
-データ収集にはLeRobotのrecording pipelineを使用した。
-
-収集条件は以下の通りである。
+SO-101 Leaderを人間が操作し、
+Followerを追従させるLeader-Follower方式で実機デモンストレーションを収集した。
 
 - デモンストレーション数: 40エピソード
-- カメラ解像度: 640 × 480
-- データセットFPS: 30
-- カメラ位置: ロボットアーム上
-- タスク: Pick-and-Place
+- 総フレーム数: 19,701
+- カメラ: アーム搭載RGBカメラ
+- 解像度: 640 x 480
+- フレームレート: 30 fps
+- 状態 / 行動: 各6次元
+- タスク指示: Move the object to the target area
 
-各エピソードでは、できるだけ一貫した初期状態から操作を開始し、  
-物体を把持してターゲット領域へ配置するまでの一連の動作を記録した。
+## 比較モデル
 
-データ収集用スクリプト:
+### ACT
 
-```bash
-./scripts/record_40demo.sh
-```
+40エピソードのデモンストレーションを使用して学習した。
 
-## ACTによる模倣学習
-
-収集した40エピソードのデモンストレーションを用いて、  
-ACT policyを学習した。
-
-主な学習設定は以下の通りである。
-
-- Policy: ACT
-- デモンストレーション数: 40エピソード
 - 学習ステップ数: 10,000
-- バッチサイズ: 8
-- 使用デバイス: CUDA
+- 最終モデル: models/act/
 
-学習用スクリプト:
+### Diffusion Policy
 
-```bash
-./scripts/train_act.sh
-```
+ACTと同一の40エピソードを使用して学習した。
 
-## 自律実行
+- 学習ステップ数: 20,000
+- 最終モデル: models/diffusion_policy/
+- 実機評価時のdenoising steps: 30
 
-学習後はLeaderを切り離し、  
-SO-101 Follower単体で自律実行を行った。
+GTX 1070上での実機推論速度と軌道生成のバランスを考慮し、
+最終評価では30 denoising stepsを使用した。
 
-推論時の入力として、
+### SmolVLA
 
-- アーム搭載カメラ画像
-- ロボットの関節状態
+事前学習済みSmolVLAを基盤として、
+同一の40エピソードを用いてLoRAファインチューニングを行った。
 
-を使用し、ACT policyがロボットのactionを生成する。
+- 学習ステップ数: 20,000
+- 最終LoRA adapter: models/smolvla/
 
-単一試行用スクリプト:
-
-```bash
-./scripts/rollout_single.sh
-```
+SmolVLAについてはLoRA adapterのみを保存しているため、
+実行時には対応する事前学習済みbase modelが必要となる。
 
 ## 実機評価
 
-学習済みpolicyを用いて10回の実機試行を実施した。
+各モデルについて以下の30試行を実施した。
 
-10回評価用スクリプト:
+- 基準位置: 10試行
+- 左方向位置変更: 10試行
+- 右方向位置変更: 10試行
 
-```bash
-./scripts/rollout_eval_10ep.sh
-```
+合計90試行で比較した。
 
-### 評価結果
+### 成功率
 
-| 条件 | 試行回数 | 成功回数 | 成功率 |
-| --- | ---: | ---: | ---: |
-| 学習時と同様の条件 | 7 | 7 | 100% |
-| 学習データに含まれない物体位置 | 2 | 0 | 0% |
-| 物体を反転した条件（把持時に滑り） | 1 | 0 | 0% |
-| 合計 | 10 | 7 | 70% |
+| モデル | 基準位置 | 左方向位置変更 | 右方向位置変更 | 総合結果 |
+| --- | ---: | ---: | ---: | ---: |
+| ACT | 5/10 (50%) | 1/10 (10%) | 0/10 (0%) | 6/30 (20.0%) |
+| Diffusion Policy | 7/10 (70%) | 1/10 (10%) | 3/10 (30%) | 11/30 (36.7%) |
+| SmolVLA | 4/10 (40%) | 6/10 (60%) | 6/10 (60%) | 16/30 (53.3%) |
 
-学習時と同様の条件では、7試行すべてでPick-and-Placeに成功した。
+### 失敗内訳
 
-一方、学習データに含まれていない物体位置では失敗し、  
-物体を反転した試行では把持時に滑りが発生した。
+| モデル | 把持失敗 | 搬送失敗 | 配置失敗 | その他 |
+| --- | ---: | ---: | ---: | ---: |
+| ACT | 22 | 1 | 1 | 0 |
+| Diffusion Policy | 15 | 1 | 1 | 2 |
+| SmolVLA | 12 | 2 | 0 | 0 |
 
-この結果から、学習データに近い条件では安定した動作が可能である一方、  
-未知位置や物体の物理的条件の変化に対する汎化性能には  
-改善の余地があることが確認できた。
+ACTでは把持失敗が多く、特に物体位置を変更した条件で成功率が低下した。
+
+Diffusion Policyは基準位置で最も高い成功率を示したが、
+位置変更条件では成功率が低下した。
+
+SmolVLAは位置変更条件において60%の成功率を維持し、
+通常の把持・搬送だけでなく、
+物体を押して目標領域まで移動させる成功例も確認された。
+
+## 実機評価スクリプト
+
+ACT:
+
+    ./scripts/run_act_eval.sh
+
+Diffusion Policy:
+
+    python scripts/run_diffusion_persistent_eval.py [LeRobot rollout arguments]
+
+SmolVLA:
+
+    python scripts/run_smolvla_persistent_eval.py [LeRobot rollout arguments]
+
+ロボットのシリアルポートおよびカメラデバイス番号は、
+使用する環境に応じて変更する必要がある。
+
+## ハードウェア・実行環境
+
+- Robot: SO-101
+- OS: Ubuntu 24.04.2 LTS
+- CPU: Intel Core i7-8700 @ 3.20 GHz
+- Memory: 8 GB
+- GPU: NVIDIA GeForce GTX 1070 8 GB
+- Inference device: CUDA
+- Camera: Innomaker U20CAM-1080p-S1
+- Camera input: 640 x 480 / 30 fps
 
 ## プロジェクト構成
 
-```text
-PAI-Final-SO101/
-├── README.md
-├── scripts/
-│   ├── record_40demo.sh
-│   ├── train_act.sh
-│   ├── rollout_single.sh
-│   └── rollout_eval_10ep.sh
-├── results/
-│   └── evaluation.md
-└── .gitignore
-```
+    PAI-Final-SO101/
+    ├── README.md
+    ├── models/
+    │   ├── act/
+    │   ├── diffusion_policy/
+    │   └── smolvla/
+    ├── scripts/
+    │   ├── record_40demo.sh
+    │   ├── train_act.sh
+    │   ├── train_smolvla.sh
+    │   ├── run_act_eval.sh
+    │   ├── run_diffusion_persistent_eval.py
+    │   └── run_smolvla_persistent_eval.py
+    ├── results/
+    │   └── evaluation.md
+    ├── transfer/
+    ├── .gitattributes
+    └── .gitignore
+
+## Large Files
+
+学習済みモデルおよび一部のデータファイルはGit LFSで管理している。
+
+リポジトリをcloneする場合はGit LFSをインストールした上で、
+
+    git lfs install
+    git clone <repository-url>
+
+を実行する。
